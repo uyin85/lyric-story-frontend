@@ -30,6 +30,18 @@ STYLE_PROMPTS = {
     "oil": "oil painting, Van Gogh style, visible brush strokes"
 }
 
+# Culture hints for different languages
+CULTURE_HINTS = {
+    "en": "cinematic, global style",
+    "es": "vibrant colors, Latin American aesthetic",
+    "fr": "artistic, European elegance",
+    "ja": "Japanese aesthetic, detailed",
+    "ko": "K-pop aesthetic, modern",
+    "zh": "Chinese cinematic style",
+    "ar": "Middle Eastern aesthetic",
+    "hi": "Bollywood style, colorful"
+}
+
 def verify_token(token):
     try:
         user = supabase.auth.get_user(token)

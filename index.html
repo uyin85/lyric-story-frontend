@@ -47,12 +47,13 @@
 
   <script>
     // ===== CONFIGURE THESE =====
-    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-    const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';
-    const BACKEND_URL = 'YOUR_RENDER_BACKEND_URL';
+    const SUPABASE_URL = 'https://zxepddzcdsovshhdezea.supabase.co';
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4ZXBkZHpjZHNvdnNoaGRlemVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDE2MTMsImV4cCI6MjA3NTM3NzYxM30.yI6kVkBIZgdIHov09hFwDNoGCmqiWVxDmFx7tg93Gak';
+    const BACKEND_URL = 'https://lyric-story-frontend.onrender.com';
     // ==========================
 
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON);
 
     async function login() {
       const email = document.getElementById('email').value;
@@ -64,7 +65,7 @@
       }
 
       try {
-        const {  } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
         if (error) {
           document.getElementById('msg').innerText = error.message;
         } else {
@@ -85,7 +86,7 @@
       }
 
       try {
-        const {  } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabaseClient.auth.signUp({ email, password });
         if (error) {
           document.getElementById('msg').innerText = error.message;
         } else {
@@ -97,7 +98,7 @@
     }
 
     async function logout() {
-      await supabase.auth.signOut();
+      await supabaseClient.auth.signOut();
       document.getElementById('login').classList.remove('hidden');
       document.getElementById('dashboard').classList.add('hidden');
     }
@@ -113,7 +114,7 @@
       formData.append('song', mp3);
       formData.append('style', style);
 
-      const {  { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabaseClient.auth.getSession();
       document.getElementById('status').innerText = 'Processing... (1-2 min)';
 
       try {
@@ -136,10 +137,10 @@
     }
 
     async function loadVideos() {
-      const {  { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabaseClient.auth.getUser();
       if (!user) return;
       
-      const {  } = await supabase
+      const { data, error } = await supabaseClient
         .from('videos')
         .select('*')
         .eq('user_id', user.id)
@@ -154,7 +155,7 @@
     }
 
     async function init() {
-      const {  { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabaseClient.auth.getUser();
       if (user) {
         document.getElementById('login').classList.add('hidden');
         document.getElementById('dashboard').classList.remove('hidden');
