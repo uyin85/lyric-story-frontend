@@ -55,21 +55,45 @@
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
     async function login() {
-      const {  } = await supabase.auth.signInWithPassword({
-        email: document.getElementById('email').value,
-        password: document.getElementById('password').value
-      });
-      if (error) document.getElementById('msg').innerText = error.message;
-      else init();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      if (!email || !password) {
+        document.getElementById('msg').innerText = 'Fill email and password';
+        return;
+      }
+
+      try {
+        const {  } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          document.getElementById('msg').innerText = error.message;
+        } else {
+          init();
+        }
+      } catch (err) {
+        document.getElementById('msg').innerText = 'Error: ' + err.message;
+      }
     }
 
     async function signup() {
-      const {  } = await supabase.auth.signUp({
-        email: document.getElementById('email').value,
-        password: document.getElementById('password').value
-      });
-      if (error) document.getElementById('msg').innerText = error.message;
-      else document.getElementById('msg').innerText = 'Check email to confirm!';
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      if (!email || !password) {
+        document.getElementById('msg').innerText = 'Fill email and password';
+        return;
+      }
+
+      try {
+        const {  } = await supabase.auth.signUp({ email, password });
+        if (error) {
+          document.getElementById('msg').innerText = error.message;
+        } else {
+          document.getElementById('msg').innerText = '✅ Check your email to confirm!';
+        }
+      } catch (err) {
+        document.getElementById('msg').innerText = 'Error: ' + err.message;
+      }
     }
 
     async function logout() {
@@ -92,23 +116,29 @@
       const {  { session } } = await supabase.auth.getSession();
       document.getElementById('status').innerText = 'Processing... (1-2 min)';
 
-      const res = await fetch(BACKEND_URL + '/generate', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + session.access_token },
-        body: formData
-      });
+      try {
+        const res = await fetch(BACKEND_URL + '/generate', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + session.access_token },
+          body: formData
+        });
 
-      const data = await res.json();
-      if (res.ok) {
-        document.getElementById('status').innerText = '✅ Done! Video in "My Videos"';
-        loadVideos();
-      } else {
-        document.getElementById('status').innerText = '❌ ' + (data.error || 'Error');
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('status').innerText = '✅ Done! Video in "My Videos"';
+          loadVideos();
+        } else {
+          document.getElementById('status').innerText = '❌ ' + (data.error || 'Error');
+        }
+      } catch (err) {
+        document.getElementById('status').innerText = 'Network error: ' + err.message;
       }
     }
 
     async function loadVideos() {
       const {  { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
       const {  } = await supabase
         .from('videos')
         .select('*')
