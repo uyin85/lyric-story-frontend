@@ -1,0 +1,8 @@
+flask
+flask-cors
+replicate
+requests
+pydub
+langdetect
+supabase
+python-jose[cryptography]
