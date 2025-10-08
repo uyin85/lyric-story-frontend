@@ -82,17 +82,28 @@ def get_story_in_language(lyrics):
     Character: [text]
     """
     
-    resp = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
-        json={
-            "model": "mistralai/mistral-7b-instruct",
-            "messages": [{"role": "user", "content": prompt}]
-        }
-    )
-    
-    output = resp.json()["choices"][0]["message"]["content"]
-    return output, lang
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
+            json={
+                "model": "mistralai/mistral-7b-instruct",
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=30
+        )
+        resp.raise_for_status()
+        
+        response_data = resp.json()
+        if "choices" not in response_data or len(response_data["choices"]) == 0:
+            raise ValueError("No response from LLM")
+        
+        output = response_data["choices"][0]["message"]["content"]
+        return output, lang
+    except Exception as e:
+        print(f"LLM Error: {e}")
+        # Fallback response
+        return f"Meaning: A song about emotions.\nStoryline: A person experiences feelings. They reflect on life. Emotions flow. A journey unfolds. Peace is found.\nCharacter: A contemplative person in a cinematic setting.", lang
 
 def parse_llm_output(output):
     lines = output.split('\n')
@@ -126,7 +137,7 @@ def parse_llm_output(output):
 
 def generate_image(prompt, seed=42):
     output = replicate.run(
-        "stabilityai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712102b35068c41f509e5c31e15550e2c6",
+        "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712102b35068c41f509e5c31e15550e2c6",
         input={
             "prompt": prompt,
             "negative_prompt": "deformed, blurry, text, watermark, cartoon",
@@ -179,7 +190,7 @@ def generate():
         image_paths = []
         for i, scene in enumerate(scenes[:num_scenes]):
             full_prompt = f"{character_desc}, {scene}, {culture_hint}, {STYLE_PROMPTS[style]}, 4k, film still"
-            img_url = generate_image(full_prompt, seed=42)
+            img_url = generate_image(full_prompt, seed=42+i)
             
             img_resp = requests.get(img_url)
             img_path = f"/tmp/scene_{i}.jpg"
@@ -195,7 +206,7 @@ def generate():
             subprocess.run([
                 "ffmpeg", "-loop", "1", "-i", img_path,
                 "-c:v", "libx264", "-t", str(scene_duration),
-                "-vf", "zoompan=z='min(zoom+0.001,1.2)':d=120",  # subtle zoom
+                "-vf", "zoompan=z='min(zoom+0.001,1.2)':d=120",
                 "-pix_fmt", "yuv420p", "-y", clip_path
             ], check=True)
             clip_paths.append(clip_path)
@@ -220,16 +231,16 @@ def generate():
             "-shortest", "-y", final_video
         ], check=True)
 
-        # Upload to Supabase Storage
+        # Upload to Supabase Storage (FIXED: bucket name)
         job_id = f"{user_id}_{int(duration_sec)}"
         with open(final_video, "rb") as f:
-            supabase.storage.from_("video").upload(
+            supabase.storage.from_("videos").upload(
                 f"{user_id}/{job_id}.mp4",
                 f.read(),
-                file_options={"content-type": "video/mp4"}
+                file_options={"content-type": "video/mp4", "upsert": "true"}
             )
 
-        video_url = supabase.storage.from_("video").get_public_url(f"{user_id}/{job_id}.mp4")
+        video_url = supabase.storage.from_("videos").get_public_url(f"{user_id}/{job_id}.mp4")
 
         # Save to DB
         supabase.table("videos").insert({
@@ -241,6 +252,15 @@ def generate():
             "style": style
         }).execute()
 
+        # Cleanup temp files
+        try:
+            os.remove(mp3_path)
+            for path in image_paths + clip_paths + [list_file, video_no_audio, final_video]:
+                if os.path.exists(path):
+                    os.remove(path)
+        except:
+            pass
+
         return jsonify({
             "video_url": video_url,
             "language": lang,
@@ -249,8 +269,8 @@ def generate():
         })
 
     except Exception as e:
+        print(f"Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-
     app.run(host="0.0.0.0", port=5000)
