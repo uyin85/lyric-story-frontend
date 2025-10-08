@@ -12,6 +12,11 @@ from supabase import create_client
 app = Flask(__name__)
 CORS(app)
 
+# Add a simple root endpoint for health checks
+@app.route('/', methods=['GET', 'HEAD'])
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
 # Load environment variables
 OPENROUTER_KEY = os.environ["OPENROUTER_KEY"]
 REPLICATE_API_TOKEN = os.environ["REPLICATE_API_TOKEN"]
@@ -274,3 +279,4 @@ def generate():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
