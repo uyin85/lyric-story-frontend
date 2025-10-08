@@ -4,7 +4,6 @@ import tempfile
 import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import replicate
 import requests
 from langdetect import detect
 from supabase import create_client
@@ -19,14 +18,12 @@ def health_check():
 
 # Load environment variables
 OPENROUTER_KEY = os.environ["OPENROUTER_KEY"]
-REPLICATE_API_TOKEN = os.environ["REPLICATE_API_TOKEN"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Style prompts
+# Style prompts (still useful for context)
 STYLE_PROMPTS = {
     "cinematic": "cinematic, film still, 35mm, dramatic lighting",
     "anime": "anime style, Studio Ghibli, detailed background",
@@ -89,7 +86,7 @@ def get_story_in_language(lyrics):
     
     try:
         resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",  # FIXED: Removed trailing spaces
+            "https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
             json={
                 "model": "mistralai/mistral-7b-instruct",
@@ -140,23 +137,6 @@ def parse_llm_output(output):
     scenes = [s.strip() for s in storyline.split('.') if s.strip()][:6]
     return meaning, scenes, character
 
-def generate_image(prompt, seed=42):
-    try:
-        output = replicate.run(
-            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712102b35068c41f509e5c31e15550e2c6",  # Current SDXL model
-            input={
-                "prompt": prompt,
-                "negative_prompt": "deformed, blurry, text, watermark, cartoon",
-                "seed": seed,
-                "num_inference_steps": 4,
-                "guidance_scale": 1.0
-            }
-        )
-        return output[0] if isinstance(output, list) else output
-    except Exception as e:
-        print(f"Image generation error: {e}")
-        raise e
-
 @app.route('/generate', methods=['POST'])
 def generate():
     try:
@@ -174,8 +154,11 @@ def generate():
         mp3_file = request.files.get('song')
         style = request.form.get('style', 'cinematic')
         
-        if not lyrics or not mp3_file:
-            return jsonify({"error": "Lyrics and MP3 required"}), 400
+        # Get uploaded images (optional, but now required)
+        image_files = request.files.getlist('images')  # ← NEW: Multiple images
+        
+        if not lyrics or not mp3_file or len(image_files) == 0:
+            return jsonify({"error": "Lyrics, MP3, and at least one image required"}), 400
 
         # Save MP3
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
@@ -184,27 +167,17 @@ def generate():
 
         # Get duration (using ffprobe)
         duration_sec = get_mp3_duration(mp3_path)
-        num_scenes = min(6, max(3, int(duration_sec // 30)))
+        num_scenes = min(len(image_files), 6)  # Use up to 6 images
 
-        # Get story & language
+        # Get story & language (still useful for metadata)
         llm_output, lang = get_story_in_language(lyrics)
         meaning, scenes, character_desc = parse_llm_output(llm_output)
-        if len(scenes) < num_scenes:
-            scenes = (scenes * (num_scenes // len(scenes) + 1))[:num_scenes]
 
-        # Add cultural hint
-        culture_hint = CULTURE_HINTS.get(lang, "cinematic, global style")
-
-        # Generate images
+        # Save uploaded images temporarily
         image_paths = []
-        for i, scene in enumerate(scenes[:num_scenes]):
-            full_prompt = f"{character_desc}, {scene}, {culture_hint}, {STYLE_PROMPTS[style]}, 4k, film still"
-            img_url = generate_image(full_prompt, seed=42+i)
-            
-            img_resp = requests.get(img_url)
+        for i, img_file in enumerate(image_files[:num_scenes]):
             img_path = f"/tmp/scene_{i}.jpg"
-            with open(img_path, "wb") as f:
-                f.write(img_resp.content)
+            img_file.save(img_path)
             image_paths.append(img_path)
 
         # Create video clips (with zoom effect)
@@ -240,16 +213,16 @@ def generate():
             "-shortest", "-y", final_video
         ], check=True)
 
-        # Upload to Supabase Storage (FIXED: bucket name from "videos" to "video")
+        # Upload to Supabase Storage (bucket name "video")
         job_id = f"{user_id}_{int(duration_sec)}"
         with open(final_video, "rb") as f:
-            supabase.storage.from_("video").upload(  # CHANGED: "videos" → "video"
+            supabase.storage.from_("video").upload(
                 f"{user_id}/{job_id}.mp4",
                 f.read(),
                 file_options={"content-type": "video/mp4", "upsert": "true"}
             )
 
-        video_url = supabase.storage.from_("video").get_public_url(f"{user_id}/{job_id}.mp4")  # CHANGED: "videos" → "video"
+        video_url = supabase.storage.from_("video").get_public_url(f"{user_id}/{job_id}.mp4")
 
         # Save to DB
         supabase.table("videos").insert({
@@ -258,7 +231,8 @@ def generate():
             "duration_sec": duration_sec,
             "video_url": video_url,
             "language": lang,
-            "style": style
+            "style": style,
+            "image_count": len(image_files)  # ← Optional: track how many images used
         }).execute()
 
         # Cleanup temp files
@@ -274,7 +248,8 @@ def generate():
             "video_url": video_url,
             "language": lang,
             "style": style,
-            "duration_sec": duration_sec
+            "duration_sec": duration_sec,
+            "image_count": len(image_files)
         })
 
     except Exception as e:
