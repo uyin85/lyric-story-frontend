@@ -229,7 +229,7 @@ def generate():
                 file_options={"content-type": "video/mp4"}
             )
 
-        video_url = supabase.storage.from_("videos").get_public_url(f"{user_id}/{job_id}.mp4")
+        video_url = supabase.storage.from_("video").get_public_url(f"{user_id}/{job_id}.mp4")
 
         # Save to DB
         supabase.table("videos").insert({
@@ -252,4 +252,5 @@ def generate():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
+
     app.run(host="0.0.0.0", port=5000)
