@@ -89,7 +89,7 @@ def get_story_in_language(lyrics):
     
     try:
         resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
+            "https://openrouter.ai/api/v1/chat/completions",  # FIXED: Removed trailing spaces
             headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
             json={
                 "model": "mistralai/mistral-7b-instruct",
@@ -141,17 +141,21 @@ def parse_llm_output(output):
     return meaning, scenes, character
 
 def generate_image(prompt, seed=42):
-    output = replicate.run(
-        "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712102b35068c41f509e5c31e15550e2c6",
-        input={
-            "prompt": prompt,
-            "negative_prompt": "deformed, blurry, text, watermark, cartoon",
-            "seed": seed,
-            "num_inference_steps": 4,
-            "guidance_scale": 1.0
-        }
-    )
-    return output[0]
+    try:
+        output = replicate.run(
+            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712102b35068c41f509e5c31e15550e2c6",  # Current SDXL model
+            input={
+                "prompt": prompt,
+                "negative_prompt": "deformed, blurry, text, watermark, cartoon",
+                "seed": seed,
+                "num_inference_steps": 4,
+                "guidance_scale": 1.0
+            }
+        )
+        return output[0] if isinstance(output, list) else output
+    except Exception as e:
+        print(f"Image generation error: {e}")
+        raise e
 
 @app.route('/generate', methods=['POST'])
 def generate():
@@ -236,16 +240,16 @@ def generate():
             "-shortest", "-y", final_video
         ], check=True)
 
-        # Upload to Supabase Storage (FIXED: bucket name)
+        # Upload to Supabase Storage (FIXED: bucket name from "videos" to "video")
         job_id = f"{user_id}_{int(duration_sec)}"
         with open(final_video, "rb") as f:
-            supabase.storage.from_("videos").upload(
+            supabase.storage.from_("video").upload(  # CHANGED: "videos" → "video"
                 f"{user_id}/{job_id}.mp4",
                 f.read(),
                 file_options={"content-type": "video/mp4", "upsert": "true"}
             )
 
-        video_url = supabase.storage.from_("videos").get_public_url(f"{user_id}/{job_id}.mp4")
+        video_url = supabase.storage.from_("video").get_public_url(f"{user_id}/{job_id}.mp4")  # CHANGED: "videos" → "video"
 
         # Save to DB
         supabase.table("videos").insert({
@@ -279,4 +283,3 @@ def generate():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
