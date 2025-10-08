@@ -223,7 +223,7 @@ def generate():
         # Upload to Supabase Storage
         job_id = f"{user_id}_{int(duration_sec)}"
         with open(final_video, "rb") as f:
-            supabase.storage.from_("videos").upload(
+            supabase.storage.from_("video").upload(
                 f"{user_id}/{job_id}.mp4",
                 f.read(),
                 file_options={"content-type": "video/mp4"}
